@@ -6,6 +6,10 @@ pipeline {
         DB_ENGINE    = 'sqlite'
     }
 
+    options {
+        skipStagesAfterUnstable()
+    }
+
     stages {
         stage('Build with Maven') {
             agent { docker { image 'maven:3.9.9-eclipse-temurin-21-alpine' } }
@@ -28,13 +32,20 @@ pipeline {
                 sh './gradlew check'
             }
         }
-        stage('Deploy') {
+        stage('Deploy - Staging') {
             steps {
-                timeout(time: 3, unit: 'MINUTES') {
-                    retry(3) {
-                        sh './flakey-deploy.sh'
-                    }
-                }
+                sh './deploy staging'
+                sh './run-smoke-tests'
+            }
+        }
+        stage('Sanity check') {
+            steps {
+                input "Does the staging environment look ok?"
+            }
+        }
+        stage('Deploy - Production') {
+            steps {
+                sh './deploy production'
             }
         }
     }
