@@ -1,9 +1,17 @@
 pipeline {
     agent any
+
+    environment {
+        DISABLE_AUTH = 'true'
+        DB_ENGINE    = 'sqlite'
+    }
+
     stages {
         stage('Build with Maven') {
             agent { docker { image 'maven:3.9.9-eclipse-temurin-21-alpine' } }
             steps {
+                echo "Database engine is ${DB_ENGINE}"
+                echo "DISABLE_AUTH is ${DISABLE_AUTH}"
                 sh 'mvn --version'
             }
         }
@@ -17,6 +25,7 @@ pipeline {
             agent { docker { image 'node:22.14.0-alpine3.21' } }
             steps {
                 sh 'node --eval "console.log(process.arch,process.platform)"'
+                sh './gradlew check'
             }
         }
         stage('Deploy') {
@@ -31,19 +40,28 @@ pipeline {
     }
     post {
         always {
-            echo 'This will always run'
+            echo 'One way or another, I have finished'
+            deleteDir() // Clean up workspace
+            archiveArtifacts artifacts: 'build/libs/**/*.jar', fingerprint: true
+            junit 'build/reports/**/*.xml'
         }
         success {
-            echo 'This will run only if successful'
-        }
-        failure {
-            echo 'This will run only if failed'
+            echo 'I succeeded!'
+            slackSend channel: '#ops-room',
+                      color: 'good',
+                      message: "The pipeline ${currentBuild.fullDisplayName} completed successfully."
         }
         unstable {
-            echo 'This will run only if the run was marked as unstable'
+            echo 'I am unstable :/'
+        }
+        failure {
+            echo 'I failed :('
+            mail to: 'team@example.com',
+                 subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
+                 body: "Something is wrong with ${env.BUILD_URL}"
         }
         changed {
-            echo 'This will run only if the state of the Pipeline has changed'
+            echo 'Things were different before...'
         }
     }
 }
